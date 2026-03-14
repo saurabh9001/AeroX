@@ -13,6 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import seaborn as sns
+import plotly.graph_objects as go
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
@@ -455,80 +456,89 @@ def enhanced_polar_analysis(predictor, x, y, Re=1e6):
 
 def plot_airfoil_analysis(x, y, actuators=None, title="Airfoil Analysis"):
     """Create comprehensive airfoil analysis plot"""
+    BG  = _C['bg']
+    SRF = _C['surface']
+    ACC = _C['accent']
+    SUC = _C['accent']       # suction = blue-500
+    EJC = _C['warn']         # ejection = amber-500
+    TXH = _C['text_hi']
+    TXM = _C['text_md']
+    TXL = _C['text_lo']
+    BRD = _C['border']
+    GRN = _C['success']
+
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+    fig.patch.set_facecolor(BG)
+    for ax in [ax1, ax2, ax3, ax4]:
+        ax.set_facecolor(SRF)
+        ax.tick_params(colors=TXL)
+        ax.grid(True, alpha=0.15, color=BRD)
+        for sp in ax.spines.values():
+            sp.set_edgecolor(BRD)
 
     # Main geometry
-    ax1.plot(x, y, 'k-', linewidth=2, label='Airfoil')
+    ax1.plot(x, y, color=ACC, linewidth=2.2, label='Airfoil')
+    ax1.fill_between(x, y, alpha=0.15, color=ACC)
     if actuators:
         for i, actuator in enumerate(actuators):
-            color = 'blue' if actuator['type'] == 'suction' else 'red'
+            color = SUC if actuator['type'] == 'suction' else EJC
             marker = 'v' if actuator['type'] == 'suction' else '^'
-            ax1.scatter(actuator['x'], actuator['y'], c=color, s=120,
-                       marker=marker, edgecolors='black', linewidth=2,
+            ax1.scatter(actuator['x'], actuator['y'], c=color, s=130,
+                       marker=marker, edgecolors=TXH, linewidth=1.2,
                        label=f"{actuator['type'].title()} {i+1}")
     ax1.set_aspect('equal')
-    ax1.set_title('Geometry & Actuators')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    ax1.set_title('Geometry & Actuators', color=TXH, fontweight='bold')
+    ax1.set_xlabel('x/c', color=TXM); ax1.set_ylabel('y/c', color=TXM)
+    ax1.legend(framealpha=0.15, labelcolor=TXM)
 
     # Thickness distribution
     x_thick = np.linspace(0, 1, 50)
     thickness = []
     for xi in x_thick:
         y_at_x = y[np.abs(x - xi) < 0.02]
-        if len(y_at_x) > 1:
-            thickness.append(np.max(y_at_x) - np.min(y_at_x))
-        else:
-            thickness.append(0)
+        thickness.append(np.max(y_at_x) - np.min(y_at_x) if len(y_at_x) > 1 else 0)
 
-    ax2.plot(x_thick, thickness, 'g-', linewidth=2)
-    ax2.set_xlabel('x/c')
-    ax2.set_ylabel('Thickness')
-    ax2.set_title('Thickness Distribution')
-    ax2.grid(True, alpha=0.3)
+    ax2.plot(x_thick, thickness, color=GRN, linewidth=2.2)
+    ax2.fill_between(x_thick, thickness, alpha=0.15, color=GRN)
+    ax2.set_xlabel('x/c', color=TXM); ax2.set_ylabel('Thickness', color=TXM)
+    ax2.set_title('Thickness Distribution', color=TXH, fontweight='bold')
 
-    # Flow streamlines (simplified)
+    # Flow streamlines
     X, Y = np.meshgrid(np.linspace(-0.2, 1.2, 50), np.linspace(-0.3, 0.3, 30))
-    U = np.ones_like(X)
-    V = np.zeros_like(Y)
-
-    # Add circulation effect
+    U = np.ones_like(X); V = np.zeros_like(Y)
     for i in range(X.shape[0]):
         for j in range(X.shape[1]):
-            dx = X[i, j] - 0.25
-            dy = Y[i, j]
+            dx = X[i, j] - 0.25; dy = Y[i, j]
             r = np.sqrt(dx**2 + dy**2)
             if r > 0.05:
-                circulation = 0.3
-                U[i, j] += -circulation * dy / (2*np.pi*r**2)
-                V[i, j] += circulation * dx / (2*np.pi*r**2)
+                U[i, j] += -0.3 * dy / (2*np.pi*r**2)
+                V[i, j] +=  0.3 * dx / (2*np.pi*r**2)
 
-    strm = ax3.streamplot(X, Y, U, V, density=1.0, color='blue', linewidth=1)
-    ax3.plot(x, y, 'k-', linewidth=2)
-    ax3.set_xlim(-0.1, 1.1)
-    ax3.set_ylim(-0.25, 0.25)
+    speed = np.sqrt(U**2 + V**2)
+    strm = ax3.streamplot(X, Y, U, V, density=1.0, color=speed,
+                          cmap='Blues', linewidth=1.2)
+    ax3.plot(x, y, color=ACC, linewidth=2.2)
+    ax3.set_xlim(-0.1, 1.1); ax3.set_ylim(-0.25, 0.25)
     ax3.set_aspect('equal')
-    ax3.set_title('Flow Streamlines')
-
-    if actuators:
-        ax3.legend() # Changed from ax.legend()
-
-    plt.colorbar(strm.lines, ax=ax3, label='Flow Speed') # Changed from ax
+    ax3.set_title('Flow Streamlines', color=TXH, fontweight='bold')
+    ax3.set_xlabel('x/c', color=TXM); ax3.set_ylabel('y/c', color=TXM)
+    cb = plt.colorbar(strm.lines, ax=ax3)
+    cb.set_label('Flow Speed', color=TXM)
+    cb.ax.tick_params(colors=TXL)
 
     # Actuator effectiveness
     if actuators:
         act_names = [f"{a['type'][0].upper()}{i+1}" for i, a in enumerate(actuators)]
-        act_eff = [a['effectiveness'] for a in actuators]
-        colors_list = ['blue' if a['type'] == 'suction' else 'red' for a in actuators]
-
-        bars = ax4.bar(act_names, act_eff, color=colors_list, alpha=0.7)
-        ax4.set_ylabel('Effectiveness Score')
-        ax4.set_title('Actuator Effectiveness')
-        ax4.grid(True, alpha=0.3)
-
+        act_eff   = [a['effectiveness'] for a in actuators]
+        clrs      = [SUC if a['type'] == 'suction' else EJC for a in actuators]
+        bars = ax4.bar(act_names, act_eff, color=clrs, alpha=0.85, width=0.5)
+        ax4.set_ylabel('Effectiveness', color=TXM)
+        ax4.set_title('Actuator Effectiveness', color=TXH, fontweight='bold')
         for bar, eff in zip(bars, act_eff):
             ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                     f'{eff:.2f}', ha='center', va='bottom')
+                     f'{eff:.2f}', ha='center', va='bottom', color=TXH, fontsize=9)
+    else:
+        ax4.set_title('No Actuators', color=TXM, fontweight='bold')
 
     plt.tight_layout()
     return fig
@@ -542,7 +552,7 @@ def create_comprehensive_report(geometry_name, airfoil_data, polar_data, actuato
     elements = []
 
     # Title
-    elements.append(Paragraph("🚀 Advanced Airfoil Analysis Report", styles['Title']))
+    elements.append(Paragraph("Advanced Airfoil Analysis Report", styles['Title']))
     elements.append(Spacer(1, 20))
 
     # Summary
@@ -586,646 +596,1061 @@ def create_comprehensive_report(geometry_name, airfoil_data, polar_data, actuato
     return buffer
 
 
+def get_current_workflow_step():
+    """Return the current workflow step for onboarding/progress tracking."""
+    if 'x' not in st.session_state:
+        return "Step 1/5: Input geometry"
+    if not st.session_state.get('models_trained', False):
+        return "Step 2/5: Train ML models"
+    if 'baseline_coeffs' not in st.session_state:
+        return "Step 2/5: Run ML prediction"
+    if 'actuators' not in st.session_state:
+        return "Step 3/5: Design actuators"
+    if 'control_effectiveness' not in st.session_state:
+        return "Step 4/5: Evaluate controlled performance"
+    return "Step 5/5: Generate final report"
+
+
+def render_step_info(step_name, goal, why_it_matters, what_happens, expected_output):
+    """Render concise, learner-friendly explanation for each major step."""
+    with st.expander(f"{step_name} — Details", expanded=False):
+        st.markdown(f"**Goal:** {goal}")
+        st.markdown(f"**Why we do this:** {why_it_matters}")
+        st.markdown(f"**What happens now:** {what_happens}")
+        st.markdown(f"**Expected output:** {expected_output}")
+
+
+def render_section_header(title, subtitle):
+    """Render a consistent section header for scroll workflow mode."""
+    st.markdown("---")
+    st.markdown(f"## {title}")
+    st.caption(subtitle)
+
+
+def get_workflow_progress():
+    """Return normalized progress of the 5-step workflow."""
+    if 'x' not in st.session_state:
+        return 0.2
+    if not st.session_state.get('models_trained', False):
+        return 0.4
+    if 'baseline_coeffs' not in st.session_state:
+        return 0.4
+    if 'actuators' not in st.session_state:
+        return 0.6
+    if 'control_effectiveness' not in st.session_state:
+        return 0.8
+    return 1.0
+
+
+def create_3d_airfoil_studio(x, y, actuators=None, title="3D Geometry Studio"):
+    """Create an interactive 3D airfoil scene for studio-style visualization."""
+    span_slices = np.linspace(-0.35, 0.35, 18)
+    X = np.tile(x, (len(span_slices), 1))
+    Y = np.tile(y, (len(span_slices), 1))
+    Z = np.tile(span_slices[:, None], (1, len(x)))
+
+    fig = go.Figure()
+    fig.add_trace(go.Surface(
+        x=X,
+        y=Z,
+        z=Y,
+        colorscale='Blues',
+        opacity=0.85,
+        showscale=False,
+        name='Airfoil Surface'
+    ))
+
+    fig.add_trace(go.Scatter3d(
+        x=x,
+        y=np.zeros_like(x),
+        z=y,
+        mode='lines',
+        line=dict(color='#ffffff', width=6),
+        name='Mid-Span Profile'
+    ))
+
+    if actuators:
+        for i, actuator in enumerate(actuators):
+            color = '#00c2ff' if actuator['type'] == 'suction' else '#ff4d4d'
+            fig.add_trace(go.Scatter3d(
+                x=[actuator['x']],
+                y=[0.0],
+                z=[actuator['y']],
+                mode='markers+text',
+                marker=dict(size=8, color=color),
+                text=[f"{actuator['type'][0].upper()}{i+1}"],
+                textposition='top center',
+                name=f"{actuator['type'].title()} {i+1}"
+            ))
+
+    fig.update_layout(
+        title=title,
+        template='plotly_white',
+        height=520,
+        font=dict(color='#ffffff'),
+        title_font=dict(color='#0f172a'),
+        scene=dict(
+            xaxis_title='x/c',
+            yaxis_title='Span',
+            zaxis_title='y/c',
+            xaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+            yaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+            zaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+            aspectmode='manual',
+            aspectratio=dict(x=2.4, y=1.2, z=0.8)
+        ),
+        margin=dict(l=0, r=0, t=44, b=0),
+        legend=dict(orientation='h', yanchor='bottom', y=1.0, x=0.01, font=dict(color='#0f172a'))
+    )
+    return fig
+
+
+def create_3d_flow_studio(alpha, actuators=None, title="3D Flow Studio"):
+    """Create interactive 3D pseudo-flow visualization for baseline/controlled comparison."""
+    xg = np.linspace(-0.05, 1.05, 22)
+    yg = np.linspace(-0.18, 0.18, 14)
+    zg = np.linspace(-0.35, 0.35, 9)
+
+    X, Y, Z = np.meshgrid(xg, yg, zg, indexing='ij')
+
+    alpha_rad = np.radians(alpha)
+    U = np.cos(alpha_rad) * np.ones_like(X)
+    V = np.sin(alpha_rad) * np.ones_like(X)
+    W = np.zeros_like(X)
+
+    # Add vortex-like circulation decaying with spanwise distance.
+    core = (X - 0.25) ** 2 + Y ** 2 + 0.6 * Z ** 2 + 1e-4
+    U += -0.25 * Y / core
+    V += 0.25 * (X - 0.25) / core
+
+    if actuators:
+        for actuator in actuators:
+            dx = X - actuator['x']
+            dy = Y - actuator['y']
+            dz = Z
+            r2 = dx ** 2 + dy ** 2 + dz ** 2 + 1e-4
+            strength = actuator['strength'] * 0.03
+            U += strength * dx / r2
+            V += strength * dy / r2
+            W += strength * dz / r2
+
+    speed = np.sqrt(U ** 2 + V ** 2 + W ** 2)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter3d(
+        x=X.ravel(),
+        y=Z.ravel(),
+        z=Y.ravel(),
+        mode='markers',
+        marker=dict(
+            size=2.5,
+            color=speed.ravel(),
+            colorscale='Turbo',
+            opacity=0.55,
+            colorbar=dict(title='Speed')
+        ),
+        name='Flow Intensity'
+    ))
+
+    fig.add_trace(go.Scatter3d(
+        x=np.linspace(0, 1, 80),
+        y=np.zeros(80),
+        z=np.zeros(80),
+        mode='lines',
+        line=dict(color='#ffffff', width=7),
+        name='Chord Line'
+    ))
+
+    fig.update_layout(
+        title=title,
+        template='plotly_white',
+        height=520,
+        font=dict(color='#ffffff'),
+        title_font=dict(color='#0f172a'),
+        scene=dict(
+            xaxis_title='x/c',
+            yaxis_title='Span',
+            zaxis_title='y/c',
+            xaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+            yaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+            zaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff'))
+        ),
+        margin=dict(l=0, r=0, t=44, b=0)
+    )
+    return fig
+
+
 # -----------------------------------------------------------
 # 🚀 Main Streamlit Application
 # -----------------------------------------------------------
 
-def main():
-    st.set_page_config(page_title="God-Level Airfoil Analysis", layout="wide", page_icon="✈️")
+# ── ERP Palette (light / professional white) ────────────────────
+_C = {
+    'bg':        '#F8FAFC',  # slate-50   — page background
+    'surface':   '#FFFFFF',  # white      — main area / cards
+    'elevated':  '#F1F5F9',  # slate-100  — sidebar / raised panels
+    'border':    '#E2E8F0',  # slate-200  — all borders
+    'accent':    '#2563EB',  # blue-600   — primary action
+    'accent_dk': '#1D4ED8',  # blue-700   — hover
+    'text_hi':   '#0F172A',  # slate-900  — headings
+    'text_md':   '#475569',  # slate-600  — body / labels
+    'text_lo':   '#334155',  # slate-700  — secondary text
+    'success':   '#059669',  # emerald-600
+    'warn':      '#D97706',  # amber-600
+    'danger':    '#DC2626',  # red-600
+}
 
-    # Custom styling
-    st.markdown("""
+def _module_header(title, subtitle):
+    c = _C
+    st.markdown(
+        f'<div style="background:{c["elevated"]};border-left:3px solid {c["accent"]};'
+        f'padding:0.8rem 1.2rem;border-radius:6px;margin-bottom:1.1rem;'
+        f'box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
+        f'<div style="color:{c["text_hi"]};font-size:1.12rem;font-weight:700;letter-spacing:0.01em;">{title}</div>'
+        f'<div style="color:{c["text_md"]};font-size:0.78rem;margin-top:3px;">{subtitle}</div></div>',
+        unsafe_allow_html=True
+    )
+
+def _card(label):
+    c = _C
+    st.markdown(
+        f'<div style="background:{c["elevated"]};border:1px solid {c["border"]};border-radius:5px;'
+        f'padding:0.45rem 0.9rem;margin-bottom:0.5rem;">'
+        f'<span style="font-size:0.7rem;font-weight:700;color:{c["accent"]};text-transform:uppercase;'
+        f'letter-spacing:0.1em;">{label}</span></div>',
+        unsafe_allow_html=True
+    )
+
+
+def main():
+    st.set_page_config(
+        page_title="AeroSuite | Airfoil Analysis Platform",
+        layout="wide",
+        page_icon=None,
+        initial_sidebar_state="expanded"
+    )
+
+    st.markdown(f"""
     <style>
-    .main-header {
-        background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
-        padding: 1.5rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .metric-box {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 4px solid #007bff;
-        margin: 0.5rem 0;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* ── Base ── */
+    html, body, [class*="css"] {{ font-family: 'Inter', system-ui, -apple-system, sans-serif; }}
+    .main .block-container {{ padding: 0; max-width: 100%; background: {_C['bg']}; color: {_C['text_hi']}; }}
+    [data-testid="stAppViewContainer"] {{ background: {_C['bg']}; color: {_C['text_hi']}; }}
+    [data-testid="stApp"] {{ background: {_C['bg']}; }}
+    .stCaption, [data-testid="stCaptionContainer"] {{ color: {_C['text_lo']} !important; }}
+    /* Force readable text on white background */
+    [data-testid="stAppViewContainer"] p,
+    [data-testid="stAppViewContainer"] span,
+    [data-testid="stAppViewContainer"] label,
+    [data-testid="stAppViewContainer"] li,
+    [data-testid="stAppViewContainer"] h1,
+    [data-testid="stAppViewContainer"] h2,
+    [data-testid="stAppViewContainer"] h3,
+    [data-testid="stAppViewContainer"] h4,
+    [data-testid="stAppViewContainer"] h5,
+    [data-testid="stAppViewContainer"] h6 {{ color: {_C['text_hi']}; }}
+    [data-testid="stMarkdownContainer"] * {{ color: {_C['text_hi']}; }}
+    [data-testid="stFileUploaderDropzone"] * {{ color: {_C['text_hi']} !important; }}
+    [data-baseweb="select"] * {{ color: {_C['text_hi']} !important; }}
+    [data-testid="stRadio"] div[role="radiogroup"] label,
+    [data-testid="stCheckbox"] label,
+    [data-testid="stToggle"] label,
+    [data-testid="stSlider"] label,
+    [data-testid="stNumberInput"] label,
+    [data-testid="stTextInput"] label {{ color: {_C['text_hi']} !important; }}
+
+    /* ── Sidebar ── */
+    [data-testid="stSidebar"] {{
+        background: {_C['elevated']} !important;
+        border-right: 1px solid {_C['border']};
+    }}
+    [data-testid="stSidebar"] * {{ color: {_C['text_hi']}; }}
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {{ color: {_C['text_hi']} !important; }}
+
+    /* ── Sidebar radio (nav items) ── */
+    [data-testid="stRadio"] > div {{ gap: 2px; }}
+    [data-testid="stRadio"] label {{
+        font-size: 0.875rem !important; font-weight: 500;
+        padding: 0.42rem 0.75rem !important; border-radius: 6px;
+        color: {_C['text_md']} !important; transition: background 0.15s;
+    }}
+    [data-testid="stRadio"] label:hover {{ background: {_C['elevated']}; }}
+
+    /* ── Metric cards ── */
+    [data-testid="stMetric"] {{
+        background: {_C['elevated']} !important;
+        border: 1px solid {_C['border']} !important;
+        border-radius: 8px !important;
+        padding: 0.65rem 0.9rem !important;
+    }}
+    [data-testid="stMetricLabel"] {{
+        font-size: 0.72rem !important; font-weight: 600 !important;
+        text-transform: uppercase; letter-spacing: 0.07em;
+        color: {_C['text_lo']} !important;
+    }}
+    [data-testid="stMetricValue"] {{
+        font-size: 1.35rem !important; font-weight: 700 !important;
+        color: {_C['text_hi']} !important;
+    }}
+    [data-testid="stMetricDelta"] {{ font-size: 0.78rem !important; font-weight: 600 !important; }}
+
+    /* ── Section divider ── */
+    .sec-div {{ border:none; border-top:1px solid {_C['border']}; margin:0.9rem 0 1rem 0; }}
+
+    /* ── Top bar ── */
+    .topbar {{
+        background: {_C['surface']};
+        border-bottom: 1px solid {_C['border']};
+        padding: 0.6rem 1.6rem;
+        margin-bottom: 1.2rem;
+        display: flex; align-items: center; gap: 1rem;
+    }}
+    .topbar-title {{
+        color: {_C['text_hi']}; font-size: 1.05rem; font-weight: 700;
+        letter-spacing: 0.01em;
+    }}
+    .topbar-divider {{ color: {_C['border']}; font-size: 1rem; }}
+    .topbar-module {{ color: {_C['accent']}; font-size: 0.9rem; font-weight: 600; }}
+    .topbar-sub {{ color: {_C['text_lo']}; font-size: 0.78rem; margin-left: auto; }}
+
+    /* ── Step pill ── */
+    .step-pill {{
+        display: inline-block;
+        background: transparent;
+        border: 1px solid {_C['border']};
+        border-radius: 4px;
+        padding: 0.2rem 0.7rem;
+        color: {_C['text_md']};
+        font-size: 0.73rem; font-weight: 600;
+        letter-spacing: 0.03em;
+    }}
+
+    /* ── Data table ── */
+    [data-testid="stDataFrame"] {{
+        border: 1px solid {_C['border']} !important; border-radius: 6px;
+    }}
+
+    /* ── Primary buttons ── */
+    .stButton > button[kind="primary"] {{
+        background: {_C['accent']} !important;
+        border: 1px solid {_C['accent']} !important;
+        color: #fff !important; font-weight: 600;
+        border-radius: 6px !important;
+        box-shadow: 0 1px 3px rgba(59,130,246,0.3);
+    }}
+    .stButton > button[kind="primary"]:hover {{
+        background: {_C['accent_dk']} !important;
+        border-color: {_C['accent_dk']} !important;
+    }}
+    .stButton > button:not([kind="primary"]) {{
+        background: {_C['elevated']} !important;
+        border: 1px solid {_C['border']} !important;
+        color: {_C['text_md']} !important;
+        border-radius: 6px !important;
+    }}
+
+    /* ── Expanders ── */
+    [data-testid="stExpander"] {{
+        background: {_C['elevated']} !important;
+        border: 1px solid {_C['border']} !important;
+        border-radius: 7px !important;
+    }}
+
+    /* ── Inputs ── */
+    [data-testid="stNumberInput"] input,
+    [data-testid="stTextInput"] input,
+    .stSelectbox [data-baseweb="select"] {{
+        background: {_C['elevated']} !important;
+        border-color: {_C['border']} !important;
+        color: {_C['text_hi']} !important;
+        border-radius: 6px;
+    }}
+    [data-testid="stNumberInput"] [data-baseweb="input"],
+    [data-testid="stTextInput"] [data-baseweb="input"],
+    .stSelectbox [data-baseweb="select"],
+    .stMultiSelect [data-baseweb="select"] {{
+        background: {_C['surface']} !important;
+        border: 1px solid {_C['border']} !important;
+        color: {_C['text_hi']} !important;
+        box-shadow: none !important;
+    }}
+    [data-testid="stNumberInput"] button,
+    [data-testid="stTextInput"] button {{
+        background: {_C['surface']} !important;
+        color: {_C['text_hi']} !important;
+        border-color: {_C['border']} !important;
+    }}
+    [data-testid="stFileUploaderDropzone"] {{
+        background: {_C['surface']} !important;
+        border: 1px dashed {_C['border']} !important;
+        color: {_C['text_hi']} !important;
+    }}
+    [data-testid="stFileUploaderDropzone"] section,
+    [data-testid="stFileUploaderDropzone"] div,
+    [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stFileUploaderDropzone"] button {{
+        background: transparent !important;
+        color: {_C['text_hi']} !important;
+        border-color: {_C['border']} !important;
+    }}
+    [data-testid="stFileUploaderDropzone"] button {{
+        background: {_C['elevated']} !important;
+    }}
+
+    /* ── Alerts ── */
+    [data-testid="stAlert"] {{ border-radius: 6px !important; border-left-width: 3px !important; }}
+
+    /* ── Progress bar ── */
+    [data-testid="stProgressBar"] > div > div {{
+        background: {_C['accent']} !important;
+        border-radius: 3px;
+    }}
+    [data-testid="stProgressBar"] > div {{
+        background: {_C['border']} !important;
+        border-radius: 3px;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('''
-    <div class="main-header">
-        <h1>🚀 God-Level Airfoil Analysis System</h1>
-        <p>ML-Powered CFD Analysis with Intelligent Actuator Placement</p>
-    </div>
-    ''', unsafe_allow_html=True)
-
-    # Initialize session state
+    # ── Initialize session state ──────────────────────────────────
     if 'ml_predictor' not in st.session_state:
         st.session_state.ml_predictor = AirfoilMLPredictor()
         st.session_state.actuator_placement = SmartActuatorPlacement()
         st.session_state.models_trained = False
 
-    # Sidebar
-    st.sidebar.header("⚙️ Analysis Configuration")
-    Re = st.sidebar.number_input("Reynolds Number", min_value=1e4, max_value=1e7,
-                                value=1e6, format="%.0e")
+    # ── Sidebar – Navigation + Global Settings ────────────────────
+    with st.sidebar:
+        st.markdown(
+            f'<div style="padding:0.7rem 0 0.4rem 0;">'
+            f'<span style="font-size:1.2rem;font-weight:800;color:{_C["text_hi"]};letter-spacing:-0.01em;">AeroSuite</span><br>'
+            f'<span style="font-size:0.72rem;color:{_C["text_lo"]};font-weight:500;">Airfoil Analysis Platform</span></div>',
+            unsafe_allow_html=True
+        )
+        st.markdown('<hr class="sec-div">', unsafe_allow_html=True)
 
-    # Main application tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📁 Input", "🧠 ML Analysis", "🎯 Actuators", "📊 Performance", "📋 Report"
-    ])
+        active_module = st.radio(
+            "Module",
+            [
+                "Geometry Input",
+                "ML Analysis",
+                "Actuator Design",
+                "Performance",
+                "Report & Export",
+            ],
+            label_visibility="collapsed"
+        )
 
-    # ---------------------------------------
-    # Tab 1: Data Input
-    # ---------------------------------------
-    with tab1:
-        st.header("📁 Airfoil Data Input")
+        st.markdown('<hr class="sec-div">', unsafe_allow_html=True)
+        st.markdown(f'<span style="font-size:0.7rem;font-weight:700;color:{_C["text_lo"]};text-transform:uppercase;letter-spacing:.1em;">Settings</span>', unsafe_allow_html=True)
 
-        col1, col2 = st.columns([1, 1])
+        Re = st.number_input("Reynolds Number", min_value=1e4, max_value=1e7, value=1e6, format="%.0e")
+        enable_3d = st.toggle("3D Studio Visuals", value=True)
+        learning_mode = st.toggle("Student Explanations", value=True)
 
-        with col1:
-            input_method = st.radio("Select Input Method:",
-                                  ["📤 Upload DAT File", "🔢 NACA Generator"])
+        st.markdown('<hr class="sec-div">', unsafe_allow_html=True)
+        st.markdown(f'<span style="font-size:0.7rem;font-weight:700;color:{_C["text_lo"]};text-transform:uppercase;letter-spacing:.1em;">Progress</span>', unsafe_allow_html=True)
+        st.progress(get_workflow_progress())
+        st.markdown(f'<div class="step-pill">{get_current_workflow_step()}</div>', unsafe_allow_html=True)
 
-            if input_method == "📤 Upload DAT File":
-                uploaded_file = st.file_uploader("Choose DAT file", type=['dat', 'txt'])
+    # ── Top bar ───────────────────────────────────────────────────
+    active_label = active_module.split("  ", 1)[-1]
+    geom_label = st.session_state.get("geometry_name", "No geometry loaded")
+    st.markdown(
+        f'<div class="topbar">'
+        f'<span class="topbar-title">AeroSuite</span>'
+        f'<span class="topbar-divider">|</span>'
+        f'<span class="topbar-module">{active_label}</span>'
+        f'<span class="topbar-sub">Airfoil: {geom_label} &nbsp;&nbsp;·&nbsp;&nbsp; Re = {Re:.0e}</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    # ══════════════════════════════════════════════════════════════
+    # MODULE 1 — Geometry Input
+    # ══════════════════════════════════════════════════════════════
+    if active_module == "Geometry Input":
+        _module_header("Geometry Input", "Upload or generate an airfoil profile to begin the analysis workflow.")
+
+        if learning_mode:
+            render_step_info(
+                "Step 1: Input Geometry",
+                "Define the airfoil shape to analyze.",
+                "All aerodynamic predictions depend on geometry. If geometry is wrong, every downstream result is unreliable.",
+                "Upload a real .dat coordinate file OR generate a synthetic NACA 4-digit profile on the right.",
+                "Airfoil plot, max thickness, max camber, and point count — plus an interactive 3D view."
+            )
+
+        left, right = st.columns([1, 1.6], gap="large")
+
+        with left:
+            _card("Input Method")
+            input_method = st.radio("Input Method", ["Upload DAT File", "NACA Generator"], label_visibility="collapsed")
+            st.markdown("")
+
+            if input_method == "Upload DAT File":
+                uploaded_file = st.file_uploader("Choose a .dat / .txt coordinate file", type=['dat', 'txt'])
                 if uploaded_file:
                     x, y, airfoil_name = load_dat_file(uploaded_file)
                     if x is not None:
                         st.session_state.x = x
                         st.session_state.y = y
                         st.session_state.geometry_name = airfoil_name
-                        st.success(f"✅ Successfully loaded: {airfoil_name}")
-                        st.info(f"📊 Coordinates: {len(x)} points")
+                        st.success(f"Loaded: {airfoil_name}  —  {len(x)} points")
                     else:
-                        st.error(f"❌ Error loading file: {airfoil_name}")
-
-            else:  # NACA Generator
-                st.subheader("NACA 4-Digit Parameters")
-
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    m = st.number_input("Max Camber (%)", 0, 8, 2) / 100
-                with col_b:
-                    p = st.number_input("Camber Position", 0, 9, 4) / 10
-                with col_c:
-                    t = st.number_input("Thickness (%)", 6, 25, 12) / 100
-
+                        st.error(f"Parse error: {airfoil_name}")
+            else:
+                _card("NACA 4-Digit Parameters")
+                ca, cb, cc = st.columns(3)
+                with ca:
+                    m = st.number_input("Camber %", 0, 8, 2, help="Max camber as % of chord") / 100
+                with cb:
+                    p = st.number_input("Camber Pos", 0, 9, 4, help="Position of max camber (tenths of chord)") / 10
+                with cc:
+                    t = st.number_input("Thickness %", 6, 25, 12, help="Max thickness as % of chord") / 100
                 naca_code = f"NACA {int(m*100):02d}{int(p*10)}{int(t*100):02d}"
-                st.write(f"**Generated:** {naca_code}")
-
-                if st.button("🎯 Generate Airfoil", type="primary"):
+                st.caption(f"Profile code: **{naca_code}**")
+                if st.button("Generate Airfoil", type="primary", use_container_width=True):
                     x, y = generate_naca4(m, p, t)
                     st.session_state.x = x
                     st.session_state.y = y
                     st.session_state.geometry_name = naca_code
-                    st.success(f"✅ Generated: {naca_code}")
+                    st.success(f"Generated: {naca_code}")
 
-        with col2:
             if 'x' in st.session_state:
-                st.subheader("📐 Airfoil Geometry")
-
-                fig, ax = plt.subplots(figsize=(10, 6))
-                ax.plot(st.session_state.x, st.session_state.y, 'navy', linewidth=2.5)
-                ax.fill_between(st.session_state.x, st.session_state.y, alpha=0.3, color='lightblue')
-                ax.set_aspect('equal')
-                ax.set_title(f"{st.session_state.geometry_name}", fontsize=14, fontweight='bold')
-                ax.grid(True, alpha=0.4)
-                ax.set_xlabel('x/c', fontsize=12)
-                ax.set_ylabel('y/c', fontsize=12)
-                st.pyplot(fig)
-
-                # Geometric properties
+                st.markdown("")
+                _card("Geometric Properties")
                 max_thickness = np.max(st.session_state.y) - np.min(st.session_state.y)
                 max_camber = np.max(np.abs(st.session_state.y))
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Thickness", f"{max_thickness:.3f}c")
+                m2.metric("Camber", f"{max_camber:.3f}c")
+                m3.metric("Points", len(st.session_state.x))
 
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    st.metric("Max Thickness", f"{max_thickness:.3f}c")
-                with col_b:
-                    st.metric("Max Camber", f"{max_camber:.3f}c")
-                with col_c:
-                    st.metric("Data Points", len(st.session_state.x))
+        with right:
+            if 'x' in st.session_state:
+                _card("2D Profile View")
+                fig, ax = plt.subplots(figsize=(9, 4))
+                fig.patch.set_facecolor(_C['bg'])
+                ax.set_facecolor(_C['surface'])
+                ax.plot(st.session_state.x, st.session_state.y, color=_C['accent'], linewidth=2.2)
+                ax.fill_between(st.session_state.x, st.session_state.y, alpha=0.18, color=_C['accent'])
+                ax.set_aspect('equal')
+                ax.set_title(st.session_state.geometry_name, color=_C['text_hi'], fontsize=12, fontweight='bold')
+                ax.tick_params(colors=_C['text_lo'])
+                for spine in ax.spines.values():
+                    spine.set_edgecolor(_C['border'])
+                ax.set_xlabel('x/c', color=_C['text_md'])
+                ax.set_ylabel('y/c', color=_C['text_md'])
+                ax.grid(True, alpha=0.15, color=_C['border'])
+                st.pyplot(fig)
+                plt.close(fig)
 
-    # ---------------------------------------
-    # Tab 2: ML Analysis
-    # ---------------------------------------
-    with tab2:
-        st.header("🧠 Machine Learning Aerodynamic Analysis")
+                if enable_3d:
+                    _card("3D Wing Surface")
+                    geo_3d = create_3d_airfoil_studio(
+                        st.session_state.x, st.session_state.y,
+                        title=f"{st.session_state.geometry_name} — 3D Wing"
+                    )
+                    st.plotly_chart(geo_3d, use_container_width=True)
+            else:
+                st.info("Generate or upload an airfoil to see visualizations here.")
+
+    # ══════════════════════════════════════════════════════════════
+    # MODULE 2 — ML Analysis
+    # ══════════════════════════════════════════════════════════════
+    elif active_module == "ML Analysis":
+        _module_header("ML Aerodynamic Analysis", "Train surrogate models and predict Cl, Cd, Cm across the flight envelope.")
 
         if 'x' not in st.session_state:
-            st.error("⚠️ Please load airfoil geometry first!")
+            st.warning("Please load airfoil geometry first — complete the Geometry Input module.")
             st.stop()
 
-        col1, col2 = st.columns([1, 2])
+        if learning_mode:
+            render_step_info(
+                "Step 2: ML-Based Aerodynamic Analysis",
+                "Estimate Cl, Cd, and Cm for the airfoil at any flight condition.",
+                "Fast ML prediction lets us evaluate many designs without expensive CFD simulations.",
+                "3 surrogate models (Gradient Boosting, Random Forest, MLP) trained on synthetic aerodynamic data.",
+                "Lift/drag/moment curves, optimal L/D angle, stall estimate, and an interactive 3D polar map."
+            )
 
-        with col1:
-            st.subheader("🎯 ML Model Training")
+        left, right = st.columns([1, 1.9], gap="large")
 
+        with left:
+            _card("Model Training")
             if not st.session_state.models_trained:
-                if st.button("🚀 Train ML Models", type="primary"):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-
-                    status_text.text("Training aerodynamic prediction models...")
-                    progress_bar.progress(25)
-
-                    training_scores = st.session_state.ml_predictor.train_models()
-                    st.session_state.models_trained = True
-
-                    progress_bar.progress(100)
-                    status_text.text("✅ Training complete!")
-
-                    st.success("🎉 ML Models trained successfully!")
-
-                    # Show training metrics
+                st.caption("Models not yet trained. Training takes ~10 seconds.")
+                if st.button("Train ML Models", type="primary", use_container_width=True):
+                    with st.spinner("Training surrogate models on synthetic aerodynamic data..."):
+                        pb = st.progress(0)
+                        training_scores = st.session_state.ml_predictor.train_models()
+                        st.session_state.models_trained = True
+                        pb.progress(100)
+                    st.success("Models trained successfully!")
                     for coeff, scores in training_scores.items():
                         st.metric(f"{coeff.title()} R²", f"{scores['r2']:.3f}")
             else:
-                st.success("✅ Models ready!")
+                st.success("Models ready")
+                st.caption("Re-run the app to retrain on a fresh dataset.")
 
-            st.subheader("🔧 Analysis Parameters")
+            st.markdown("")
+            _card("Operating Point")
             alpha = st.slider("Angle of Attack (°)", -15.0, 25.0, 5.0, 0.5)
 
             if st.session_state.models_trained:
-                # Real-time prediction
                 Cl, Cd, Cm = st.session_state.ml_predictor.predict(
                     st.session_state.x, st.session_state.y, alpha, Re
                 )
-
                 st.session_state.baseline_coeffs = (Cl, Cd, Cm)
                 st.session_state.current_alpha = alpha
 
-                st.markdown("### 📊 Current Predictions")
+                st.markdown("")
+                _card("Aerodynamic Coefficients")
+                r1, r2 = st.columns(2)
+                r1.metric("Cl", f"{Cl:.4f}")
+                r1.metric("Cd", f"{Cd:.4f}")
+                r2.metric("Cm", f"{Cm:.4f}")
+                r2.metric("L/D", f"{Cl/Cd:.1f}")
 
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.metric("Lift Coefficient (Cl)", f"{Cl:.4f}")
-                    st.metric("Drag Coefficient (Cd)", f"{Cd:.4f}")
-                with col_b:
-                    st.metric("Moment Coefficient (Cm)", f"{Cm:.4f}")
-                    st.metric("L/D Ratio", f"{Cl/Cd:.1f}")
-
-                # Performance assessment
-                LD_ratio = Cl/Cd
-                if LD_ratio > 50:
-                    st.success("🌟 Excellent aerodynamic efficiency!")
-                elif LD_ratio > 30:
-                    st.info("✅ Good aerodynamic performance")
+                LD = Cl / Cd
+                if LD > 50:
+                    st.success("Excellent aerodynamic efficiency")
+                elif LD > 30:
+                    st.info("Good aerodynamic performance")
                 else:
-                    st.warning("⚠️ Room for improvement in efficiency")
+                    st.warning("Room for efficiency improvement")
 
-        with col2:
+        with right:
             if st.session_state.models_trained:
-                st.subheader("📈 Polar Analysis")
-
-                with st.spinner("Generating polar curves..."):
+                with st.spinner("Computing polar curves…"):
                     polar_data = enhanced_polar_analysis(
                         st.session_state.ml_predictor,
                         st.session_state.x, st.session_state.y, Re
                     )
                     st.session_state.polar_data = polar_data
 
-                # Plot polars
-                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
+                _card("Aerodynamic Polar Charts")
+                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 8))
+                fig.patch.set_facecolor(_C['bg'])
+                for ax in [ax1, ax2, ax3, ax4]:
+                    ax.set_facecolor(_C['surface'])
+                    ax.tick_params(colors=_C['text_lo'])
+                    ax.grid(True, alpha=0.15, color=_C['border'])
+                    for sp in ax.spines.values():
+                        sp.set_edgecolor(_C['border'])
 
-                # Lift curve
-                ax1.plot(polar_data['alpha'], polar_data['Cl'], 'b-', linewidth=2.5)
-                ax1.axvline(x=alpha, color='red', linestyle='--', alpha=0.7, label=f'Current α = {alpha}°')
-                ax1.set_xlabel('Angle of Attack (°)')
-                ax1.set_ylabel('Cl')
-                ax1.set_title('Lift Curve')
-                ax1.legend()
-                ax1.grid(True, alpha=0.3)
+                ax1.plot(polar_data['alpha'], polar_data['Cl'], _C['accent'], linewidth=2.2)
+                ax1.axvline(x=alpha, color=_C['danger'], linestyle='--', alpha=0.8, label=f'α={alpha}°')
+                ax1.set_xlabel('α (°)', color=_C['text_md']); ax1.set_ylabel('Cl', color=_C['text_md'])
+                ax1.set_title('Lift Curve', color=_C['text_hi'], fontweight='bold')
+                ax1.legend(framealpha=0.15, labelcolor=_C['text_md'])
 
-                # Drag polar
-                ax2.plot(polar_data['Cd'], polar_data['Cl'], 'r-', linewidth=2.5)
-                ax2.scatter(Cd, Cl, c='red', s=100, marker='o', label=f'Current Point')
-                ax2.set_xlabel('Cd')
-                ax2.set_ylabel('Cl')
-                ax2.set_title('Drag Polar')
-                ax2.legend()
-                ax2.grid(True, alpha=0.3)
+                ax2.plot(polar_data['Cd'], polar_data['Cl'], _C['warn'], linewidth=2.2)
+                ax2.scatter(Cd, Cl, c=_C['danger'], s=90, marker='o', label='Current', zorder=5)
+                ax2.set_xlabel('Cd', color=_C['text_md']); ax2.set_ylabel('Cl', color=_C['text_md'])
+                ax2.set_title('Drag Polar', color=_C['text_hi'], fontweight='bold')
+                ax2.legend(framealpha=0.15, labelcolor=_C['text_md'])
 
-                # L/D curve
-                ax3.plot(polar_data['alpha'], polar_data['L_D'], 'g-', linewidth=2.5)
                 max_LD_idx = np.argmax(polar_data['L_D'])
+                ax3.plot(polar_data['alpha'], polar_data['L_D'], _C['success'], linewidth=2.2)
                 ax3.scatter(polar_data['alpha'][max_LD_idx], polar_data['L_D'][max_LD_idx],
-                           c='gold', s=150, marker='*', label=f"Max L/D = {polar_data['max_LD_value']:.1f}")
-                ax3.axvline(x=alpha, color='red', linestyle='--', alpha=0.7)
-                ax3.set_xlabel('Angle of Attack (°)')
-                ax3.set_ylabel('L/D Ratio')
-                ax3.set_title('Lift-to-Drag Performance')
-                ax3.legend()
-                ax3.grid(True, alpha=0.3)
+                            c='#F1F5F9', s=130, marker='*', zorder=5,
+                            label=f"Max {polar_data['max_LD_value']:.1f}")
+                ax3.axvline(x=alpha, color=_C['danger'], linestyle='--', alpha=0.8)
+                ax3.set_xlabel('α (°)', color=_C['text_md']); ax3.set_ylabel('L/D', color=_C['text_md'])
+                ax3.set_title('Lift-to-Drag', color=_C['text_hi'], fontweight='bold')
+                ax3.legend(framealpha=0.15, labelcolor=_C['text_md'])
 
-                # Moment curve
-                ax4.plot(polar_data['alpha'], polar_data['Cm'], 'm-', linewidth=2.5)
-                ax4.axhline(y=0, color='k', linestyle='--', alpha=0.5)
-                ax4.axvline(x=alpha, color='red', linestyle='--', alpha=0.7)
-                ax4.set_xlabel('Angle of Attack (°)')
-                ax4.set_ylabel('Cm')
-                ax4.set_title('Pitching Moment')
-                ax4.grid(True, alpha=0.3)
+                ax4.plot(polar_data['alpha'], polar_data['Cm'], '#A78BFA', linewidth=2.2)
+                ax4.axhline(y=0, color=_C['text_lo'], linestyle='--', alpha=0.6)
+                ax4.axvline(x=alpha, color=_C['danger'], linestyle='--', alpha=0.8)
+                ax4.set_xlabel('α (°)', color=_C['text_md']); ax4.set_ylabel('Cm', color=_C['text_md'])
+                ax4.set_title('Pitching Moment', color=_C['text_hi'], fontweight='bold')
 
-                plt.tight_layout()
+                plt.tight_layout(pad=1.5)
                 st.pyplot(fig)
+                plt.close(fig)
 
-                # Key performance metrics
-                st.markdown("### 🏆 Key Performance Metrics")
-                col_a, col_b, col_c, col_d = st.columns(4)
-                with col_a:
-                    st.metric("Optimal L/D", f"{polar_data['max_LD_value']:.1f}",
-                             f"@ {polar_data['max_LD_alpha']:.1f}°")
-                with col_b:
-                    st.metric("Stall Angle", f"{polar_data['stall_alpha']:.1f}°")
-                with col_c:
-                    st.metric("Max Cl", f"{polar_data['max_Cl']:.3f}")
-                with col_d:
-                    efficiency_rating = "Excellent" if polar_data['max_LD_value'] > 50 else "Good" if polar_data['max_LD_value'] > 30 else "Fair"
-                    st.metric("Efficiency", efficiency_rating)
+                _card("Key Performance Indicators")
+                k1, k2, k3, k4 = st.columns(4)
+                k1.metric("Optimal L/D", f"{polar_data['max_LD_value']:.1f}", f"@ {polar_data['max_LD_alpha']:.1f}°")
+                k2.metric("Stall Angle", f"{polar_data['stall_alpha']:.1f}°")
+                k3.metric("Max Cl", f"{polar_data['max_Cl']:.3f}")
+                k4.metric("Efficiency", "Excellent" if polar_data['max_LD_value'] > 50 else "Good" if polar_data['max_LD_value'] > 30 else "Fair")
 
-    # ---------------------------------------
-    # Tab 3: Actuator Design
-    # ---------------------------------------
-    with tab3:
-        st.header("🎯 Intelligent Actuator Placement System")
+                if enable_3d:
+                    st.markdown("")
+                    _card("3D Polar Space (Alpha × Cd × Cl — colored by L/D)")
+                    polar_3d = go.Figure()
+                    polar_3d.add_trace(go.Scatter3d(
+                        x=polar_data['alpha'], y=polar_data['Cd'], z=polar_data['Cl'],
+                        mode='lines+markers',
+                        marker=dict(size=5, color=polar_data['L_D'], colorscale='Viridis',
+                                    colorbar=dict(title='L/D', thickness=12)),
+                        line=dict(width=4, color='#66d9ef'), name='Polar Curve'
+                    ))
+                    polar_3d.update_layout(template='plotly_white', height=480,
+                        font=dict(color='#ffffff'),
+                        title_font=dict(color='#0f172a'),
+                        scene=dict(
+                            xaxis_title='α (°)', yaxis_title='Cd', zaxis_title='Cl',
+                            xaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+                            yaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff')),
+                            zaxis=dict(backgroundcolor='rgb(18,22,34)', gridcolor='rgb(70,80,100)', color='#ffffff', title_font=dict(color='#ffffff'), tickfont=dict(color='#ffffff'))
+                        ),
+                        margin=dict(l=0, r=0, t=30, b=0))
+                    st.plotly_chart(polar_3d, use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # MODULE 3 — Actuator Design
+    # ══════════════════════════════════════════════════════════════
+    elif active_module == "Actuator Design":
+        _module_header("Actuator Design", "Place flow-control actuators (suction/ejection) to improve aerodynamic performance.")
 
         if 'baseline_coeffs' not in st.session_state:
-            st.error("⚠️ Please complete ML analysis first!")
+            st.warning("Complete ML Analysis first to unlock this module.")
             st.stop()
 
-        col1, col2 = st.columns([1, 2])
+        if learning_mode:
+            render_step_info(
+                "Step 3: Actuator Design",
+                "Place suction and ejection actuators on the airfoil surface.",
+                "Active flow control delays boundary-layer separation, reduces drag and increases effective L/D.",
+                "The algorithm analyses pressure peaks and applies aerodynamic rules to choose actuator type, location, and strength.",
+                "Actuator table, 2D placement diagram, 3D wing view with actuators, and ΔCl / ΔCd metrics."
+            )
 
-        with col1:
-            st.subheader("🎛️ Control Configuration")
+        left, right = st.columns([1, 1.9], gap="large")
 
-            control_objective = st.selectbox("Primary Control Objective:", [
-                "Maximize L/D Ratio",
-                "Increase Lift Coefficient",
-                "Reduce Drag Coefficient",
-                "Improve Stall Characteristics"
-            ])
+        with left:
+            _card("Control Objective")
+            control_objective = st.selectbox("Primary Objective", [
+                "Maximize L/D Ratio", "Increase Lift Coefficient",
+                "Reduce Drag Coefficient", "Improve Stall Characteristics"
+            ], label_visibility="collapsed")
 
-            max_actuators = st.slider("Maximum Actuators", 1, 5, 3)
-            control_authority = st.slider("Control Authority", 0.1, 1.0, 0.7, 0.1)
+            _card("Actuator Parameters")
+            max_actuators = st.slider("Max Actuators", 1, 5, 3)
+            control_authority = st.slider("Control Authority", 0.1, 1.0, 0.7, 0.1,
+                                          help="Scales the strength of all actuators (0.1 = gentle, 1.0 = maximum)")
 
-            if st.button("🎯 Design Actuator System", type="primary"):
-                with st.spinner("Analyzing flow physics and optimizing actuator placement..."):
-                    # Generate actuator recommendations
+            if st.button("Run Actuator Design", type="primary", use_container_width=True):
+                with st.spinner("Optimising actuator placement…"):
                     actuators = st.session_state.actuator_placement.suggest_actuator_locations(
                         st.session_state.x, st.session_state.y,
                         st.session_state.baseline_coeffs[0],
                         st.session_state.baseline_coeffs[1],
                         st.session_state.current_alpha
                     )
-
-                    # Apply control authority scaling
                     for actuator in actuators:
                         actuator['strength'] *= control_authority
-
-                    # Limit number of actuators
                     if len(actuators) > max_actuators:
-                        actuators.sort(key=lambda x: x['effectiveness'], reverse=True)
+                        actuators.sort(key=lambda a: a['effectiveness'], reverse=True)
                         actuators = actuators[:max_actuators]
-
                     st.session_state.actuators = actuators
-
-                    # Calculate control effectiveness
                     control_eff = st.session_state.actuator_placement.estimate_control_effectiveness(
                         actuators, st.session_state.baseline_coeffs
                     )
                     st.session_state.control_effectiveness = control_eff
+                st.success(f"Design complete — {len(actuators)} actuators placed")
 
-                st.success(f"✅ Optimized {len(st.session_state.actuators)} actuator system!")
-
-            # Manual actuator adjustment
             if 'actuators' in st.session_state and st.session_state.actuators:
-                st.subheader("🔧 Fine-Tune Actuators")
-
-                selected_actuator = st.selectbox(
-                    "Select Actuator to Adjust:",
+                st.markdown("")
+                _card("Fine-Tune Selected Actuator")
+                if learning_mode:
+                    st.caption("Move or strengthen an actuator to explore trade-offs interactively.")
+                sel = st.selectbox("Actuator",
                     range(len(st.session_state.actuators)),
-                    format_func=lambda i: f"{st.session_state.actuators[i]['type'].title()} {i+1}"
-                )
-
-                if selected_actuator < len(st.session_state.actuators):
-                    act = st.session_state.actuators[selected_actuator]
-
-                    new_x = st.slider("x/c position", 0.1, 0.9, act['x'], 0.05)
-                    new_strength = st.slider("Strength", -1.0, 1.0, act['strength'], 0.1)
-
-                    if st.button("Update Actuator"):
-                        st.session_state.actuators[selected_actuator]['x'] = new_x
-                        st.session_state.actuators[selected_actuator]['strength'] = new_strength
-                        st.session_state.actuators[selected_actuator]['y'] = np.interp(new_x, st.session_state.x, st.session_state.y)
-
-                        # Recalculate effectiveness
-                        control_eff = st.session_state.actuator_placement.estimate_control_effectiveness(
+                    format_func=lambda i: f"{st.session_state.actuators[i]['type'].title()} {i+1}",
+                    label_visibility="collapsed")
+                act = st.session_state.actuators[sel]
+                new_x = st.slider("x/c position", 0.1, 0.9, float(act['x']), 0.05)
+                new_s = st.slider("Strength", -1.0, 1.0, float(act['strength']), 0.05)
+                if st.button("Apply Adjustment", use_container_width=True):
+                    st.session_state.actuators[sel]['x'] = new_x
+                    st.session_state.actuators[sel]['strength'] = new_s
+                    st.session_state.actuators[sel]['y'] = float(np.interp(new_x, st.session_state.x, st.session_state.y))
+                    st.session_state.control_effectiveness = (
+                        st.session_state.actuator_placement.estimate_control_effectiveness(
                             st.session_state.actuators, st.session_state.baseline_coeffs
                         )
-                        st.session_state.control_effectiveness = control_eff
-                        st.success("✅ Actuator updated!")
+                    )
+                    st.success("Updated")
 
-        with col2:
+        with right:
             if 'actuators' in st.session_state and st.session_state.actuators:
-                st.subheader("🎪 Actuator Configuration")
+                _card("Actuator Configuration Table")
+                actuator_df = pd.DataFrame([{
+                    'ID': f"{a['type'][0].upper()}{i+1}",
+                    'Type': a['type'].title(),
+                    'x/c': f"{a['x']:.3f}", 'y/c': f"{a['y']:.3f}",
+                    'Strength': f"{a['strength']:.2f}", 'Purpose': a['purpose']
+                } for i, a in enumerate(st.session_state.actuators)])
+                st.dataframe(actuator_df, use_container_width=True, hide_index=True)
 
-                # Display actuator table
-                actuator_data = []
-                for i, act in enumerate(st.session_state.actuators):
-                    actuator_data.append({
-                        'ID': f"{act['type'][0].upper()}{i+1}",
-                        'Type': act['type'].title(),
-                        'x/c': f"{act['x']:.3f}",
-                        'y/c': f"{act['y']:.3f}",
-                        'Strength': f"{act['strength']:.2f}",
-                        'Purpose': act['purpose']
-                    })
-
-                actuator_df = pd.DataFrame(actuator_data)
-                st.dataframe(actuator_df, use_container_width=True)
-
-                # Visualization
+                _card("2D Placement Diagram")
                 fig = plot_airfoil_analysis(
                     st.session_state.x, st.session_state.y,
-                    st.session_state.actuators,
-                    "Actuator Placement & Analysis"
+                    st.session_state.actuators, "Actuator Placement"
                 )
                 st.pyplot(fig)
+                plt.close(fig)
 
-                # Control effectiveness metrics
                 if 'control_effectiveness' in st.session_state:
-                    st.subheader("📈 Control Effectiveness")
+                    st.markdown("")
+                    _card("Control Effectiveness")
                     eff = st.session_state.control_effectiveness
-
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
-                        st.metric("ΔCl", f"{eff['delta_Cl']:+.3f}",
-                                 delta=f"{eff['delta_Cl']/st.session_state.baseline_coeffs[0]*100:+.1f}%")
-                    with col_b:
-                        st.metric("ΔCd", f"{eff['delta_Cd']:+.4f}",
-                                 delta=f"{eff['delta_Cd']/st.session_state.baseline_coeffs[1]*100:+.1f}%")
-                    with col_c:
-                        st.metric("L/D Improvement", f"{eff['L_D_improvement']*100:+.1f}%")
-
-                    # Performance indicator
+                    e1, e2, e3 = st.columns(3)
+                    base = st.session_state.baseline_coeffs
+                    e1.metric("ΔCl", f"{eff['delta_Cl']:+.3f}",
+                              f"{eff['delta_Cl']/base[0]*100:+.1f}%")
+                    e2.metric("ΔCd", f"{eff['delta_Cd']:+.4f}",
+                              f"{eff['delta_Cd']/base[1]*100:+.1f}%")
+                    e3.metric("L/D Improvement", f"{eff['L_D_improvement']*100:+.1f}%")
                     if eff['L_D_improvement'] > 0.1:
-                        st.success("🌟 Excellent control effectiveness!")
+                        st.success("Excellent control effectiveness")
                     elif eff['L_D_improvement'] > 0.05:
-                        st.info("✅ Good control performance")
+                        st.info("Good control performance")
                     else:
-                        st.warning("⚠️ Limited control effectiveness")
+                        st.warning("Limited effectiveness — try adjusting actuator positions")
 
-    # ---------------------------------------
-    # Tab 4: Performance Analysis
-    # ---------------------------------------
-    with tab4:
-        st.header("📊 Advanced Performance Analysis")
+                if enable_3d:
+                    st.markdown("")
+                    _card("3D Wing + Actuator Positions")
+                    act_3d = create_3d_airfoil_studio(
+                        st.session_state.x, st.session_state.y,
+                        actuators=st.session_state.actuators,
+                        title="3D Actuator Placement"
+                    )
+                    st.plotly_chart(act_3d, use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # MODULE 4 — Performance
+    # ══════════════════════════════════════════════════════════════
+    elif active_module == "Performance":
+        _module_header("Performance Analysis", "Compare baseline vs controlled aerodynamics with 2D charts and 3D flow fields.")
 
         if 'control_effectiveness' not in st.session_state:
-            st.error("⚠️ Please complete actuator design first!")
+            st.warning("Complete Actuator Design first to unlock this module.")
             st.stop()
 
-        # Performance comparison dashboard
-        st.subheader("🏁 Baseline vs Controlled Performance")
+        if learning_mode:
+            render_step_info(
+                "Step 4: Performance Comparison",
+                "Quantify the improvement from active flow control.",
+                "Engineering decisions need measurable, validated gains — not just visual intuition.",
+                "Baseline and controlled coefficients are compared; actuator sensitivity is swept to find optimal strength.",
+                "Before/after metric cards, bar chart, side-by-side flow field plots, 3D flow studio, sensitivity curves."
+            )
 
-        baseline = st.session_state.baseline_coeffs
+        baseline  = st.session_state.baseline_coeffs
         controlled = st.session_state.control_effectiveness
 
-        # Main performance metrics
-        col1, col2, col3, col4 = st.columns(4)
+        _card("Controlled vs Baseline — Key Metrics")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Lift Coefficient", f"{controlled['Cl_controlled']:.4f}", f"{controlled['delta_Cl']:+.4f}")
+        k2.metric("Drag Coefficient", f"{controlled['Cd_controlled']:.4f}", f"{controlled['delta_Cd']:+.4f}")
+        k3.metric("L/D Ratio",
+                  f"{controlled['Cl_controlled']/controlled['Cd_controlled']:.1f}",
+                  f"{controlled['L_D_improvement']*100:+.1f}%")
+        gain = controlled['L_D_improvement'] * 100
+        k4.metric("Efficiency Gain", f"{gain:.1f}%",
+                  "Excellent" if gain > 10 else "Good" if gain > 5 else "Moderate")
 
-        with col1:
-            st.metric("Lift Coefficient",
-                     f"{controlled['Cl_controlled']:.4f}",
-                     delta=f"{controlled['delta_Cl']:+.4f}")
-        with col2:
-            st.metric("Drag Coefficient",
-                     f"{controlled['Cd_controlled']:.4f}",
-                     delta=f"{controlled['delta_Cd']:+.4f}")
-        with col3:
-            st.metric("L/D Ratio",
-                     f"{controlled['Cl_controlled']/controlled['Cd_controlled']:.1f}",
-                     delta=f"{controlled['L_D_improvement']*100:+.1f}%")
-        with col4:
-            efficiency_gain = controlled['L_D_improvement'] * 100
-            if efficiency_gain > 10:
-                st.metric("Efficiency Gain", f"{efficiency_gain:.1f}%", "🚀 Excellent")
-            elif efficiency_gain > 5:
-                st.metric("Efficiency Gain", f"{efficiency_gain:.1f}%", "✅ Good")
-            else:
-                st.metric("Efficiency Gain", f"{efficiency_gain:.1f}%", "📈 Moderate")
+        left_p, right_p = st.columns([1, 1], gap="large")
 
-        # Detailed comparison chart
-        st.subheader("📊 Performance Comparison Chart")
-
-        comparison_data = pd.DataFrame({
-            'Metric': ['Cl', 'Cd (×100)', 'L/D'],
-            'Baseline': [baseline[0], baseline[1]*100, baseline[0]/baseline[1]],
-            'Controlled': [controlled['Cl_controlled'], controlled['Cd_controlled']*100,
-                          controlled['Cl_controlled']/controlled['Cd_controlled']]
-        })
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-        x_pos = np.arange(len(comparison_data))
-        width = 0.35
-
-        bars1 = ax.bar(x_pos - width/2, comparison_data['Baseline'], width,
-                      label='Baseline', color='lightblue', alpha=0.8)
-        bars2 = ax.bar(x_pos + width/2, comparison_data['Controlled'], width,
-                      label='Controlled', color='lightcoral', alpha=0.8)
-
-        ax.set_xlabel('Performance Metrics')
-        ax.set_ylabel('Values')
-        ax.set_title('Baseline vs Controlled Performance')
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(comparison_data['Metric'])
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
-        # Add value labels on bars
-        for bars in [bars1, bars2]:
-            for bar in bars:
-                height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                       f'{height:.2f}', ha='center', va='bottom')
-
-        st.pyplot(fig)
-
-        # Flow field visualization
-        st.subheader("🌊 Flow Field Analysis")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("**Baseline Flow**")
-            fig_baseline = create_flow_visualization(st.session_state.x, st.session_state.y,
-                                                   None, st.session_state.current_alpha)
-            st.pyplot(fig_baseline)
-
-        with col2:
-            st.markdown("**Controlled Flow**")
-            fig_controlled = create_flow_visualization(st.session_state.x, st.session_state.y,
-                                                     st.session_state.actuators, st.session_state.current_alpha)
-            st.pyplot(fig_controlled)
-
-        # Sensitivity analysis
-        st.subheader("🔍 Actuator Sensitivity Analysis")
-
-        if st.session_state.actuators:
-            # Analyze first actuator sensitivity
-            base_actuator = st.session_state.actuators[0]
-            strength_range = np.linspace(-1.0, 1.0, 11)
-            sensitivity_results = []
-
-            for strength in strength_range:
-                modified_actuators = st.session_state.actuators.copy()
-                modified_actuators[0] = {**base_actuator, 'strength': strength}
-
-                eff = st.session_state.actuator_placement.estimate_control_effectiveness(
-                    modified_actuators, st.session_state.baseline_coeffs
-                )
-
-                sensitivity_results.append({
-                    'Strength': strength,
-                    'ΔCl': eff['delta_Cl'],
-                    'ΔCd': eff['delta_Cd'],
-                    'L/D_improvement': eff['L_D_improvement']*100
-                })
-
-            sens_df = pd.DataFrame(sensitivity_results)
-
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
-            ax1.plot(sens_df['Strength'], sens_df['ΔCl'], 'b-', linewidth=2, label='ΔCl')
-            ax1.plot(sens_df['Strength'], sens_df['ΔCd']*10, 'r-', linewidth=2, label='ΔCd (×10)')
-            ax1.axhline(y=0, color='k', linestyle='--', alpha=0.5)
-            ax1.set_xlabel('Actuator Strength')
-            ax1.set_ylabel('Coefficient Change')
-            ax1.set_title('Force Coefficient Sensitivity')
-            ax1.legend()
-            ax1.grid(True, alpha=0.3)
-
-            ax2.plot(sens_df['Strength'], sens_df['L/D_improvement'], 'g-', linewidth=2)
-            ax2.axhline(y=0, color='k', linestyle='--', alpha=0.5)
-            ax2.set_xlabel('Actuator Strength')
-            ax2.set_ylabel('L/D Improvement (%)')
-            ax2.set_title('Efficiency Sensitivity')
-            ax2.grid(True, alpha=0.3)
-
+        with left_p:
+            _card("Performance Comparison Chart")
+            comparison_data = pd.DataFrame({
+                'Metric': ['Cl', 'Cd ×100', 'L/D'],
+                'Baseline':    [baseline[0], baseline[1]*100, baseline[0]/baseline[1]],
+                'Controlled':  [controlled['Cl_controlled'], controlled['Cd_controlled']*100,
+                                controlled['Cl_controlled']/controlled['Cd_controlled']]
+            })
+            fig, ax = plt.subplots(figsize=(6, 4))
+            fig.patch.set_facecolor(_C['bg'])
+            ax.set_facecolor(_C['surface'])
+            xp = np.arange(len(comparison_data))
+            w = 0.35
+            bars1 = ax.bar(xp - w/2, comparison_data['Baseline'],  w, label='Baseline',   color=_C['accent'],  alpha=0.85)
+            bars2 = ax.bar(xp + w/2, comparison_data['Controlled'], w, label='Controlled', color=_C['success'], alpha=0.85)
+            ax.set_xticks(xp); ax.set_xticklabels(comparison_data['Metric'], color=_C['text_md'])
+            ax.tick_params(colors=_C['text_lo'])
+            ax.set_title('Baseline vs Controlled', color=_C['text_hi'], fontweight='bold')
+            ax.legend(framealpha=0.15, labelcolor=_C['text_md'])
+            ax.grid(True, alpha=0.15, color=_C['border'])
+            for sp in ax.spines.values():
+                sp.set_edgecolor(_C['border'])
+            for brs in [bars1, bars2]:
+                for bar in brs:
+                    h = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2, h + h*0.015,
+                            f'{h:.2f}', ha='center', va='bottom', color=_C['text_hi'], fontsize=8)
             plt.tight_layout()
             st.pyplot(fig)
+            plt.close(fig)
 
-    # ---------------------------------------
-    # Tab 5: Report Generation
-    # ---------------------------------------
-    with tab5:
-        st.header("📋 Professional Report Generation")
+        with right_p:
+            _card("Actuator Sensitivity Analysis")
+            if st.session_state.actuators:
+                base_act = st.session_state.actuators[0]
+                strengths = np.linspace(-1.0, 1.0, 13)
+                sens = []
+                for s in strengths:
+                    mod = st.session_state.actuators.copy()
+                    mod[0] = {**base_act, 'strength': s}
+                    e = st.session_state.actuator_placement.estimate_control_effectiveness(
+                        mod, st.session_state.baseline_coeffs)
+                    sens.append({'Strength': s, 'ΔCl': e['delta_Cl'],
+                                 'ΔCd': e['delta_Cd'], 'LD%': e['L_D_improvement']*100})
+                sdf = pd.DataFrame(sens)
+                fig2, (sa, sb) = plt.subplots(1, 2, figsize=(7, 3.5))
+                fig2.patch.set_facecolor(_C['bg'])
+                for ax in [sa, sb]:
+                    ax.set_facecolor(_C['surface'])
+                    ax.tick_params(colors=_C['text_lo'])
+                    ax.grid(True, alpha=0.15, color=_C['border'])
+                    for sp in ax.spines.values():
+                        sp.set_edgecolor(_C['border'])
+                sa.plot(sdf['Strength'], sdf['ΔCl'], _C['accent'], lw=2, label='ΔCl')
+                sa.plot(sdf['Strength'], sdf['ΔCd']*10, _C['warn'], lw=2, label='ΔCd×10')
+                sa.axhline(0, color=_C['text_lo'], ls='--', alpha=0.5)
+                sa.set_xlabel('Strength', color=_C['text_md'])
+                sa.set_title('Force Sensitivity', color=_C['text_hi'], fontweight='bold')
+                sa.legend(framealpha=0.15, labelcolor=_C['text_md'])
+                sb.plot(sdf['Strength'], sdf['LD%'], _C['success'], lw=2)
+                sb.axhline(0, color=_C['text_lo'], ls='--', alpha=0.5)
+                sb.set_xlabel('Strength', color=_C['text_md']); sb.set_ylabel('L/D %', color=_C['text_md'])
+                sb.set_title('Efficiency Sensitivity', color=_C['text_hi'], fontweight='bold')
+                plt.tight_layout()
+                st.pyplot(fig2)
+                plt.close(fig2)
+
+        st.markdown("")
+        _card("Flow Field Comparison")
+        fl, fr = st.columns(2, gap="medium")
+        with fl:
+            st.caption("Baseline Flow")
+            fig_b = create_flow_visualization(st.session_state.x, st.session_state.y,
+                                              None, st.session_state.current_alpha)
+            st.pyplot(fig_b); plt.close(fig_b)
+        with fr:
+            st.caption("Controlled Flow")
+            fig_c = create_flow_visualization(st.session_state.x, st.session_state.y,
+                                              st.session_state.actuators, st.session_state.current_alpha)
+            st.pyplot(fig_c); plt.close(fig_c)
+
+        if enable_3d:
+            st.markdown("")
+            _card("3D Flow Studio — Baseline vs Controlled")
+            fd_l, fd_r = st.columns(2, gap="medium")
+            with fd_l:
+                f3b = create_3d_flow_studio(st.session_state.current_alpha,
+                                            actuators=None, title="Baseline 3D Flow")
+                st.plotly_chart(f3b, use_container_width=True)
+            with fd_r:
+                f3c = create_3d_flow_studio(st.session_state.current_alpha,
+                                            actuators=st.session_state.actuators,
+                                            title="Controlled 3D Flow")
+                st.plotly_chart(f3c, use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # MODULE 5 — Report & Export
+    # ══════════════════════════════════════════════════════════════
+    elif active_module == "Report & Export":
+        _module_header("Report & Export", "Generate a professional PDF report and download raw CSV results.")
 
         if 'control_effectiveness' not in st.session_state:
-            st.error("⚠️ Please complete performance analysis first!")
+            st.warning("Complete Performance Analysis first to unlock this module.")
             st.stop()
 
-        col1, col2 = st.columns([1, 1])
+        if learning_mode:
+            render_step_info(
+                "Step 5: Report Export",
+                "Package all analysis results into a shareable engineering document.",
+                "Lab reports, engineering reviews, and peer presentations all need well-structured documentation.",
+                "The platform compiles geometry, aerodynamic predictions, actuator design, and control results into PDF/CSV format.",
+                "Downloadable PDF report + CSV data table ready for further analysis in Excel or Python."
+            )
 
-        with col1:
-            st.subheader("📄 Report Configuration")
+        baseline   = st.session_state.baseline_coeffs
+        controlled = st.session_state.control_effectiveness
 
-            report_sections = st.multiselect("Include Sections:", [
-                "Executive Summary",
-                "Geometric Analysis",
-                "Aerodynamic Performance",
-                "Actuator Design",
-                "Control Effectiveness",
-                "Recommendations"
+        left_r, right_r = st.columns([1, 1.4], gap="large")
+
+        with left_r:
+            _card("Report Configuration")
+            st.multiselect("Sections to include", [
+                "Executive Summary", "Geometric Analysis",
+                "Aerodynamic Performance", "Actuator Design",
+                "Control Effectiveness", "Recommendations"
             ], default=["Executive Summary", "Aerodynamic Performance", "Actuator Design"])
 
-            include_charts = st.checkbox("Include Performance Charts", True)
-
-            if st.button("📊 Generate Professional Report", type="primary"):
-                with st.spinner("Generating comprehensive analysis report..."):
+            st.markdown("")
+            if st.button("Generate PDF Report", type="primary", use_container_width=True):
+                with st.spinner("Building report…"):
                     try:
-                        pdf_buffer = create_comprehensive_report(
+                        pdf_buf = create_comprehensive_report(
                             st.session_state.geometry_name,
-                            {
-                                'x': st.session_state.x,
-                                'y': st.session_state.y,
-                                'baseline_coeffs': st.session_state.baseline_coeffs
-                            },
+                            {'x': st.session_state.x, 'y': st.session_state.y,
+                             'baseline_coeffs': baseline},
                             st.session_state.polar_data,
                             st.session_state.actuators,
-                            st.session_state.control_effectiveness
+                            controlled
                         )
-
                         st.download_button(
-                            "📥 Download PDF Report",
-                            data=pdf_buffer,
-                            file_name=f"{st.session_state.geometry_name}_analysis_report.pdf",
-                            mime="application/pdf",
-                            type="primary"
+                            "Download PDF Report", data=pdf_buf,
+                            file_name=f"{st.session_state.geometry_name}_report.pdf",
+                            mime="application/pdf", type="primary",
+                            use_container_width=True
                         )
-
-                        st.success("✅ Report generated successfully!")
-
+                        st.success("Report ready for download")
                     except Exception as e:
-                        st.error(f"❌ Report generation failed: {str(e)}")
+                        st.error(f"Report error: {e}")
 
-        with col2:
-            if 'control_effectiveness' in st.session_state:
-                st.subheader("📈 Report Preview")
+            st.markdown("")
+            _card("CSV Quick Export")
+            results_df = pd.DataFrame({
+                'Parameter': ['Cl_baseline', 'Cd_baseline', 'Cm_baseline', 'LD_baseline',
+                              'Cl_controlled', 'Cd_controlled', 'Cm_controlled', 'LD_controlled',
+                              'Delta_Cl', 'Delta_Cd', 'Delta_Cm', 'LD_improvement_%'],
+                'Value': [baseline[0], baseline[1], baseline[2], baseline[0]/baseline[1],
+                          controlled['Cl_controlled'], controlled['Cd_controlled'],
+                          controlled['Cm_controlled'],
+                          controlled['Cl_controlled']/controlled['Cd_controlled'],
+                          controlled['delta_Cl'], controlled['delta_Cd'], controlled['delta_Cm'],
+                          controlled['L_D_improvement']*100]
+            })
+            st.download_button(
+                "Download Results CSV", data=results_df.to_csv(index=False),
+                file_name=f"{st.session_state.geometry_name}_results.csv",
+                mime="text/csv", use_container_width=True
+            )
 
-                # Summary statistics
-                baseline = st.session_state.baseline_coeffs
-                controlled = st.session_state.control_effectiveness
+        with right_r:
+            _card("Executive Summary Preview")
+            alpha_cur = st.session_state.get('current_alpha', 0.0)
+            st.markdown(f"""
+| Field | Value |
+|---|---|
+| **Airfoil** | {st.session_state.geometry_name} |
+| **Conditions** | α = {alpha_cur:.1f}°, Re = {Re:.0e} |
+| **Baseline Cl / Cd / L/D** | {baseline[0]:.3f} / {baseline[1]:.4f} / {baseline[0]/baseline[1]:.1f} |
+| **Controlled Cl / Cd / L/D** | {controlled['Cl_controlled']:.3f} / {controlled['Cd_controlled']:.4f} / {controlled['Cl_controlled']/controlled['Cd_controlled']:.1f} |
+| **ΔCl / ΔCd** | {controlled['delta_Cl']:+.3f} / {controlled['delta_Cd']:+.4f} |
+| **L/D Improvement** | {controlled['L_D_improvement']*100:+.1f}% |
+| **Actuators placed** | {len(st.session_state.actuators)} |
+""")
 
-                st.markdown("**Executive Summary Preview:**")
+            st.markdown("")
+            _card("Results Table")
+            st.dataframe(results_df, use_container_width=True, hide_index=True)
 
-                summary_text = f"""
-                **Airfoil:** {st.session_state.geometry_name}
-                **Analysis Conditions:** α = {st.session_state.current_alpha:.1f}°, Re = {Re:.0e}
-
-                **Baseline Performance:**
-                - Cl = {baseline[0]:.3f}
-                - Cd = {baseline[1]:.4f}
-                - L/D = {baseline[0]/baseline[1]:.1f}
-
-                **Controlled Performance:**
-                - Cl = {controlled['Cl_controlled']:.3f} ({controlled['delta_Cl']:+.3f})
-                - Cd = {controlled['Cd_controlled']:.4f} ({controlled['delta_Cd']:+.4f})
-                - L/D = {controlled['Cl_controlled']/controlled['Cd_controlled']:.1f} ({controlled['L_D_improvement']*100:+.1f}%)
-
-                **Actuator System:** {len(st.session_state.actuators)} optimally placed actuators
-                """
-
-                st.markdown(summary_text)
-
-                # Quick export options
-                st.subheader("💾 Quick Export")
-
-                # CSV export of results
-                results_data = {
-                    'Parameter': ['Cl_baseline', 'Cd_baseline', 'Cm_baseline', 'LD_baseline',
-                                 'Cl_controlled', 'Cd_controlled', 'Cm_controlled', 'LD_controlled',
-                                 'Delta_Cl', 'Delta_Cd', 'Delta_Cm', 'LD_improvement_percent'],
-                    'Value': [baseline[0], baseline[1], baseline[2], baseline[0]/baseline[1],
-                             controlled['Cl_controlled'], controlled['Cd_controlled'],
-                             controlled['Cm_controlled'], controlled['Cl_controlled']/controlled['Cd_controlled'],
-                             controlled['delta_Cl'], controlled['delta_Cd'], controlled['delta_Cm'],
-                             controlled['L_D_improvement']*100]
-                }
-
-                results_df = pd.DataFrame(results_data)
-
-                csv = results_df.to_csv(index=False)
-                st.download_button(
-                    "📊 Download Results CSV",
-                    data=csv,
-                    file_name=f"{st.session_state.geometry_name}_results.csv",
-                    mime="text/csv"
-                )
 
 
 # -----------------------------------------------------------
@@ -1235,6 +1660,8 @@ def main():
 def create_flow_visualization(x, y, actuators=None, alpha=0):
     """Create flow field visualization"""
     fig, ax = plt.subplots(figsize=(8, 5))
+    fig.patch.set_facecolor(_C['bg'])
+    ax.set_facecolor(_C['surface'])
 
     # Create grid
     X, Y = np.meshgrid(np.linspace(-0.2, 1.2, 40), np.linspace(-0.25, 0.25, 25))
@@ -1251,7 +1678,6 @@ def create_flow_visualization(x, y, actuators=None, alpha=0):
             dx = X[i, j] - 0.25
             dy = Y[i, j]
             r = np.sqrt(dx**2 + dy**2)
-
             if r > 0.05:
                 U[i, j] += -circulation * dy / (2*np.pi*r**2)
                 V[i, j] += circulation * dx / (2*np.pi*r**2)
@@ -1261,45 +1687,47 @@ def create_flow_visualization(x, y, actuators=None, alpha=0):
         for actuator in actuators:
             ax_pos, ay_pos = actuator['x'], actuator['y']
             strength = actuator['strength'] * 0.1
-
             for i in range(X.shape[0]):
                 for j in range(X.shape[1]):
                     dx = X[i, j] - ax_pos
                     dy = Y[i, j] - ay_pos
                     r = np.sqrt(dx**2 + dy**2)
-
                     if r > 0.02:
                         U[i, j] += strength * dx / (2*np.pi*r**2)
                         V[i, j] += strength * dy / (2*np.pi*r**2)
 
     # Plot streamlines
     speed = np.sqrt(U**2 + V**2)
-    strm = ax.streamplot(X, Y, U, V, density=1.2, color=speed, cmap='viridis', linewidth=1)
+    strm = ax.streamplot(X, Y, U, V, density=1.2, color=speed, cmap='Blues', linewidth=1.2)
 
-    # Plot airfoil
-    ax.plot(x, y, 'k-', linewidth=2.5, label='Airfoil')
-    ax.fill_between(x, y, alpha=0.3, color='gray')
+    # Airfoil
+    ax.plot(x, y, color=_C['accent'], linewidth=2.2, label='Airfoil')
+    ax.fill_between(x, y, alpha=0.18, color=_C['accent'])
 
-    # Plot actuators
+    # Actuators
     if actuators:
         for i, actuator in enumerate(actuators):
-            color = 'blue' if actuator['type'] == 'suction' else 'red'
+            color  = _C['accent'] if actuator['type'] == 'suction' else _C['warn']
             marker = 'v' if actuator['type'] == 'suction' else '^'
-            ax.scatter(actuator['x'], actuator['y'], c=color, s=120,
-                      marker=marker, edgecolors='black', linewidth=2,
-                      label=f"{actuator['type'].title()} {i+1}")
+            ax.scatter(actuator['x'], actuator['y'], c=color, s=130,
+                      marker=marker, edgecolors=_C['text_hi'], linewidth=1.2,
+                      label=f"{actuator['type'].title()} {i+1}", zorder=5)
 
-    ax.set_xlim(-0.1, 1.1)
-    ax.set_ylim(-0.2, 0.2)
+    ax.set_xlim(-0.1, 1.1); ax.set_ylim(-0.2, 0.2)
     ax.set_aspect('equal')
-    ax.set_xlabel('x/c')
-    ax.set_ylabel('y/c')
-    ax.set_title(f'Flow Field') # Removed alpha as it's not universally available here
-
+    ax.set_xlabel('x/c', color=_C['text_md']); ax.set_ylabel('y/c', color=_C['text_md'])
+    ax.set_title(f'Flow Field  (α = {alpha}°)', color=_C['text_hi'], fontweight='bold')
+    ax.tick_params(colors=_C['text_lo'])
+    for sp in ax.spines.values():
+        sp.set_edgecolor(_C['border'])
     if actuators:
-        ax.legend()
+        ax.legend(framealpha=0.15, labelcolor=_C['text_md'])
 
-    plt.colorbar(strm.lines, ax=ax, label='Flow Speed')
+    cb = plt.colorbar(strm.lines, ax=ax)
+    cb.set_label('Flow Speed', color=_C['text_md'])
+    cb.ax.tick_params(colors=_C['text_lo'])
+    plt.tight_layout()
+    return fig
 
 if __name__ == '__main__':
     main()
